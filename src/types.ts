@@ -3,7 +3,9 @@ export interface ConfigServer {
     port?: number;
     proxy?: string;
     location?: string;
-    fileExtensions?: boolean;
+    redirectHtmlExtension?: boolean;
+    allowedFileTypes?: string[];
+    forbiddenFileTypes?: string[];
     headers?: {
         [key: string]: any;
     };

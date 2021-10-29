@@ -1,4 +1,6 @@
 [
     {
+        "root": "/Users/samal/Downloads/html",
+        "forbiddenFileTypes": ["html"]
     }
 ]

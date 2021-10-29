@@ -29,19 +29,15 @@ export default class Server {
         this.server.get(`*`, (req, res) => {
             try {
                 if (!this.checkRequestUrl(req.path, res)) return;
-
-                if (this.config.location !== "/") {
-                    this.currentRequestPath = req.path.slice((this.config.location as string).length + 2); // Remove two extra characters for the slashes that were previously removed 
-                    this.currentRequestPath = this.removeOuterSlashes(this.currentRequestPath);
-                } else {
-                    this.currentRequestPath = req.path;
-                }
+                this.formatCurrentRequestPath(req.path);
+                this.formatResponse(res);
+                this.checkUrlExtension(res);
                 
                 const filePath = `${this.config.root}/${this.currentRequestPath}`;
 
                 if (existsSync(filePath)) {
-                    if (this.extensionsEnabled) {
-                        if (this.checkForExtensions(res)) return;
+                    if (this.config.redirectHtmlExtension === false || this.config.redirectHtmlExtension === undefined) {
+                        if (this.checkForHtmlExtension(res)) return;
                     }
 
                     this.sendFile(res, filePath);
@@ -52,20 +48,18 @@ export default class Server {
                         this.sendFile(res, filePath + ".html");
                     }
                 } else {
-                    this.notFound(res);
+                    this.respondNotFound(res);
                 }
             } catch {
-                this.internalServerError(res);
+                this.respondInternalServerError(res);
             }
         });
     }
 
     private sendFile(res: Response, path: string): void {
-        this.formatResponse(res);
-
         res.sendFile(path, null, (err) => {
             if (err) {
-                this.notFound(res);
+                this.respondForbidden(res);
             }
         });
     }
@@ -84,11 +78,10 @@ export default class Server {
         res.set(this.config.headers);
     }
 
-    private get extensionsEnabled() {
-        return (this.config.fileExtensions === false || this.config.fileExtensions === undefined);
-    }
+    private checkForHtmlExtension(res: Response): boolean {
+        const urlFileExtension = this.getFileExtension(this.currentRequestPath);
+        if (urlFileExtension !== "html" || urlFileExtension === null) return false;
 
-    private checkForExtensions(res: Response): boolean {
         const lastDotIndex = this.currentRequestPath?.lastIndexOf(".");
 
         if (lastDotIndex !== -1) {
@@ -108,8 +101,20 @@ export default class Server {
 
     private removeFileExtension(str: string): string {
         const lastDotIndex = str.lastIndexOf(".");
-        str = str.substring(0, lastDotIndex);
-        return str;
+        return str.substring(0, lastDotIndex);
+    }
+
+    private getFileExtension(str: string): string | null {
+        if (str === "/") return "html";
+
+        const lastDotIndex = str.lastIndexOf(".");
+        if (lastDotIndex === -1) {
+            if (existsSync(`${this.config.root}/${str}.html`)) {
+                return "html"
+            } else return null;
+        }
+
+        return str.slice(lastDotIndex + 1);
     }
 
     private start(): void {
@@ -145,7 +150,7 @@ export default class Server {
         url = url.substring(0, this.config.location?.length);
 
         if (url !== this.config.location) {
-            this.notFound(res);
+            this.respondNotFound(res);
             return false;
         }
 
@@ -165,13 +170,44 @@ export default class Server {
         return url;
     }
 
-    private notFound(res: Response) {
-        this.formatResponse(res);
+    private formatCurrentRequestPath(path: string): void {
+
+        if (this.config.location !== "/") {
+            this.currentRequestPath = path.slice((this.config.location as string).length + 2); // Remove two extra characters for the slashes that were previously removed 
+        } else {
+            this.currentRequestPath = path;
+        }
+
+        this.currentRequestPath = this.removeOuterSlashes(this.currentRequestPath);
+    }
+
+    private respondNotFound(res: Response) {
         res.status(404).send("<h1>404 Not Found</h1>");
     }
 
-    private internalServerError(res: Response) {
-        this.formatResponse(res);
+    private respondInternalServerError(res: Response) {
         res.status(500).send("<h1>500 Internal Server Error</h1>");
+    }
+
+    private respondForbidden(res: Response) 
+    {
+        res.status(403).send("<h1>403 Forbidden</h1>");
+    }
+
+    private checkUrlExtension(res: Response) {
+        const requestFileType = this.getFileExtension(this.currentRequestPath);
+        if (requestFileType !== null) {
+            if (typeof this.config.forbiddenFileTypes === "object") {
+                if (this.config.forbiddenFileTypes.includes(requestFileType)) {
+                    this.respondForbidden(res);
+                    return;
+                }
+            } else if (typeof this.config.allowedFileTypes === "object") {
+                if (!this.config.allowedFileTypes.includes(requestFileType)) {
+                    this.respondForbidden(res);
+                    return;
+                }
+            }
+        }
     }
 }
