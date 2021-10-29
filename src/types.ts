@@ -1,6 +1,7 @@
 export interface ConfigServer {
     root: string;
-    port: number;
+    port?: number;
+    location?: string | undefined;
     fileExtensions?: boolean;
 }
 

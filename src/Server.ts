@@ -1,36 +1,48 @@
-import express, { Express, Request, Response } from "express";
+import express, { Express, Response, Send } from "express";
 import { existsSync } from "fs";
 import { ConfigServer } from "./types";
 
 export default class Server {
     private config: ConfigServer;
     private server: Express;
+    private currentRequestPath: string;
 
     constructor(config: ConfigServer) {
         this.config = config;
         this.server = express();
+        this.currentRequestPath = "";
+        this.formatConfig();
         this.setupRoutes();
-        this.server.listen(this.config.port);
+        this.start();
     }
 
     private setupRoutes(): void {
-        this.server.get("*", (req, res) => {
-            const filePath = `${this.config.root}/${req.originalUrl}`;
+        this.server.get(`*`, (req, res) => {
+            if (!this.checkRequestUrl(req.path, res)) return;
+
+            if (this.config.location !== "/") {
+                this.currentRequestPath = req.path.slice((this.config.location as string).length + 2); // Remove two extra characters for the slashes that were previously removed 
+                this.currentRequestPath = this.removeOuterSlashes(this.currentRequestPath);
+            } else {
+                this.currentRequestPath = req.path;
+            }
+            
+            const filePath = `${this.config.root}/${this.currentRequestPath}`;
 
             if (existsSync(filePath)) {
                 if (this.extensionsEnabled) {
-                    if (this.checkForExtensions(req, res)) return;
+                    if (this.checkForExtensions(res)) return;
                 }
 
                 this.sendFile(res, filePath);
             } else if (existsSync(filePath + ".html")) {
-                if (req.originalUrl === "/index") {
+                if (this.currentRequestPath === "/index") {
                     res.redirect("/");
                 } else {
                     this.sendFile(res, filePath + ".html");
                 }
             } else {
-                res.status(404).send("<h1>404 Not Found</h1>");
+                this.notFound(res);
             }
         });
     }
@@ -38,25 +50,20 @@ export default class Server {
     private sendFile(res: Response, path: string): void {
         res.sendFile(path, null, (err) => {
             if (err) {
-                res.status(404).send("<h1>404 Not Found</h1>");
+                this.notFound(res);
             }
         });
     }
 
     private get extensionsEnabled() {
-        return (
-            this.config.fileExtensions === false ||
-            this.config.fileExtensions === undefined
-        );
+        return (this.config.fileExtensions === false || this.config.fileExtensions === undefined);
     }
 
-    private checkForExtensions(req: Request, res: Response): boolean {
-        const lastDotIndex = req.originalUrl.lastIndexOf(".");
+    private checkForExtensions(res: Response): boolean {
+        const lastDotIndex = this.currentRequestPath?.lastIndexOf(".");
+
         if (lastDotIndex !== -1) {
-            const removedExtensionUrl = req.originalUrl.substring(
-                0,
-                lastDotIndex
-            );
+            const removedExtensionUrl = this.removeFileExtension(this.currentRequestPath);
 
             if (removedExtensionUrl === "/index") {
                 res.redirect("/");
@@ -65,6 +72,57 @@ export default class Server {
             }
 
             return true;
-        } else return false;
+        }
+
+        return false;
+    }
+
+    private removeFileExtension(str: string): string {
+        const lastDotIndex = str.lastIndexOf(".");
+        str = str.substring(0, lastDotIndex);
+        return str;
+    }
+
+    private start(): void {
+        if (this.config.port) {
+            this.server.listen(this.config.port);
+        } else {
+            this.server.listen(80);
+        }
+    }
+
+    private formatConfig(): void {
+        this.config.location = this.removeOuterSlashes(this.config.location);
+    }
+
+    private checkRequestUrl(url: string, res: Response): boolean {
+        if (this.config.location === "/") return true;
+
+        url = this.removeOuterSlashes(url);
+        url = url.substring(0, this.config.location?.length);
+
+        if (url !== this.config.location) {
+            this.notFound(res);
+            return false;
+        }
+
+        return true;
+   }
+
+    private removeOuterSlashes(url: string | undefined): string {
+        if (url === "/" || !url) return "/";
+        while (url[0] === "/") {
+            url = url?.substring(1);
+        }
+
+        while (url[url.length - 1] === "/") {
+            url = url?.slice(0, -1);
+        }
+
+        return url;
+    }
+
+    private notFound(res: Response) {
+        res.status(404).send("<h1>404 Not Found</h1>");
     }
 }
