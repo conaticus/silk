@@ -2,53 +2,60 @@ import express, { Express, Response } from "express";
 import proxy from "express-http-proxy";
 import { existsSync } from "fs";
 import { ConfigServer } from "./types";
+import error from "./error";
 
 export default class Server {
     private config: ConfigServer;
+    private serverNumber: number;
     private server: Express;
     private currentRequestPath: string;
 
-    constructor(config: ConfigServer) {
+    constructor(config: ConfigServer, serverNumber: number) {
         this.config = config;
+        this.serverNumber = serverNumber;
         this.server = express();
         this.currentRequestPath = "";
-        this.formatConfig();
+        this.checkConfig();
 
         if (this.config.proxy) {
             this.server.use(this.config.location as string, proxy(this.config.proxy));
         }
-        
+
         this.setupRoutes();
         this.start();
     }
 
     private setupRoutes(): void {
         this.server.get(`*`, (req, res) => {
-            if (!this.checkRequestUrl(req.path, res)) return;
+            try {
+                if (!this.checkRequestUrl(req.path, res)) return;
 
-            if (this.config.location !== "/") {
-                this.currentRequestPath = req.path.slice((this.config.location as string).length + 2); // Remove two extra characters for the slashes that were previously removed 
-                this.currentRequestPath = this.removeOuterSlashes(this.currentRequestPath);
-            } else {
-                this.currentRequestPath = req.path;
-            }
-            
-            const filePath = `${this.config.root}/${this.currentRequestPath}`;
-
-            if (existsSync(filePath)) {
-                if (this.extensionsEnabled) {
-                    if (this.checkForExtensions(res)) return;
-                }
-
-                this.sendFile(res, filePath);
-            } else if (existsSync(filePath + ".html")) {
-                if (this.currentRequestPath === "/index") {
-                    res.redirect("/");
+                if (this.config.location !== "/") {
+                    this.currentRequestPath = req.path.slice((this.config.location as string).length + 2); // Remove two extra characters for the slashes that were previously removed 
+                    this.currentRequestPath = this.removeOuterSlashes(this.currentRequestPath);
                 } else {
-                    this.sendFile(res, filePath + ".html");
+                    this.currentRequestPath = req.path;
                 }
-            } else {
-                this.notFound(res);
+                
+                const filePath = `${this.config.root}/${this.currentRequestPath}`;
+
+                if (existsSync(filePath)) {
+                    if (this.extensionsEnabled) {
+                        if (this.checkForExtensions(res)) return;
+                    }
+
+                    this.sendFile(res, filePath);
+                } else if (existsSync(filePath + ".html")) {
+                    if (this.currentRequestPath === "/index") {
+                        res.redirect("/");
+                    } else {
+                        this.sendFile(res, filePath + ".html");
+                    }
+                } else {
+                    this.notFound(res);
+                }
+            } catch {
+                this.internalServerError(res);
             }
         });
     }
@@ -115,7 +122,19 @@ export default class Server {
         }
     }
 
-    private formatConfig(): void {
+    private checkConfig(): void {
+        if (this.config.proxy && this.config.root) {
+            error(`There cannot be both a 'proxy' and a 'root' in the same server. (server #${this.serverNumber})`);
+        }
+
+        if (this.config.proxy && this.config.headers !== undefined) {
+            error(`The 'headers' configuration cannot be used in the same server as a 'proxy'. (server #${this.serverNumber})`);
+        }
+
+        if (!this.config.proxy && !this.config.root) {
+            error(`A 'root' or 'proxy' is required in order to start a server. (server #${this.serverNumber})`);
+        }
+
         this.config.location = this.removeOuterSlashes(this.config.location);
     }
 
@@ -147,6 +166,12 @@ export default class Server {
     }
 
     private notFound(res: Response) {
+        this.formatResponse(res);
         res.status(404).send("<h1>404 Not Found</h1>");
+    }
+
+    private internalServerError(res: Response) {
+        this.formatResponse(res);
+        res.status(500).send("<h1>500 Internal Server Error</h1>");
     }
 }
