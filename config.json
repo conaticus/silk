@@ -1,8 +1,5 @@
 [
     {
-        "root": "/Users/samal/Downloads/html",
-        "headers": {
-            "Server": null
-        }
+        "proxy": "https://google.com"
     }
 ]

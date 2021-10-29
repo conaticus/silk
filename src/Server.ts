@@ -1,4 +1,5 @@
-import express, { Express, Response, Send } from "express";
+import express, { Express, Response } from "express";
+import proxy from "express-http-proxy";
 import { existsSync } from "fs";
 import { ConfigServer } from "./types";
 
@@ -12,6 +13,11 @@ export default class Server {
         this.server = express();
         this.currentRequestPath = "";
         this.formatConfig();
+
+        if (this.config.proxy) {
+            this.server.use(this.config.location as string, proxy(this.config.proxy));
+        }
+        
         this.setupRoutes();
         this.start();
     }
@@ -48,8 +54,18 @@ export default class Server {
     }
 
     private sendFile(res: Response, path: string): void {
+        this.formatResponse(res);
+
+        res.sendFile(path, null, (err) => {
+            if (err) {
+                this.notFound(res);
+            }
+        });
+    }
+
+    private formatResponse(res: Response) {
         res.set("Server", "Silk");
-        
+
         for (const headerKey in this.config.headers) {
             const headerVal = this.config.headers[headerKey];
             if (headerVal === null) {
@@ -59,12 +75,6 @@ export default class Server {
         }
 
         res.set(this.config.headers);
-
-        res.sendFile(path, null, (err) => {
-            if (err) {
-                this.notFound(res);
-            }
-        });
     }
 
     private get extensionsEnabled() {

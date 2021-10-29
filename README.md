@@ -18,6 +18,9 @@ To configure silk you need to alter the `config.json` file.
         "headers": { // Set the headers for the server response, any header that is null will delete the response header
             "Server": null // Delete the server response header
         }
+    },
+    {
+        "proxy": "https://google.com", // Proxy to google.com
     }
 ]
 ```

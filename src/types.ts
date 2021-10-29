@@ -1,7 +1,8 @@
 export interface ConfigServer {
     root: string;
     port?: number;
-    location?: string | undefined;
+    proxy?: string;
+    location?: string;
     fileExtensions?: boolean;
     headers?: {
         [key: string]: any;
