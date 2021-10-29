@@ -3,6 +3,9 @@ export interface ConfigServer {
     port?: number;
     location?: string | undefined;
     fileExtensions?: boolean;
+    headers?: {
+        [key: string]: any;
+    };
 }
 
 export type Config = ConfigServer[];

@@ -48,6 +48,18 @@ export default class Server {
     }
 
     private sendFile(res: Response, path: string): void {
+        res.set("Server", "Silk");
+        
+        for (const headerKey in this.config.headers) {
+            const headerVal = this.config.headers[headerKey];
+            if (headerVal === null) {
+                res.removeHeader(headerKey);
+                delete this.config.headers[headerKey];
+            } 
+        }
+
+        res.set(this.config.headers);
+
         res.sendFile(path, null, (err) => {
             if (err) {
                 this.notFound(res);
@@ -84,6 +96,8 @@ export default class Server {
     }
 
     private start(): void {
+        this.server.disable("x-powered-by");
+
         if (this.config.port) {
             this.server.listen(this.config.port);
         } else {

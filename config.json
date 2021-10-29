@@ -1,5 +1,8 @@
 [
     {
-        "root": "/Users/samal/Downloads/html"
+        "root": "/Users/samal/Downloads/html",
+        "headers": {
+            "Server": null
+        }
     }
 ]
