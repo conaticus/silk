@@ -5,6 +5,7 @@ import { ConfigServer } from "./types";
 import { isBool, isNumber, isString } from "./util";
 import { exit } from "process";
 
+/** Class creating a new Express server based on a configuration */
 export default class Server {
     private config: ConfigServer;
     private serverNumber: number;
@@ -26,6 +27,9 @@ export default class Server {
         this.start();
     }
 
+    /**
+     * Checks the server configuration for errors and formats any neccesary data
+     */
     private checkConfig(): void {
         if (this.config.proxy && this.config.root) {
             this.error("There cannot be both a 'proxy' and a 'root' in the same server.");
@@ -81,6 +85,9 @@ export default class Server {
         this.config.forbiddenPath = this.removeOuterSlashes(this.config.forbiddenPath);
     }
 
+    /**
+     * Creates the routes for the server
+     */
     private setupRoutes(): void {
         this.server.get(`*`, (req, res) => {
             try {
@@ -112,6 +119,9 @@ export default class Server {
         });
     }
 
+    /**
+     * Remove all outer slashes of from a string
+     */
     private removeOuterSlashes(url: string | undefined): string {
         if (url === "/" || !url) return "/";
         while (url[0] === "/") {
@@ -125,6 +135,10 @@ export default class Server {
         return url;
     }
 
+    /**
+     * Checks a url is correct in correspondence to the server's root
+     * @returns whether or not the url was correct
+     */
     private checkRequestUrl(url: string, res: Response): boolean {
         if (this.config.location === "/") return true;
 
@@ -139,6 +153,9 @@ export default class Server {
         return true;
    }
 
+   /**
+    * Sets the `currentRequestPath` as a local path in relation `path`
+    */
     private formatCurrentRequestPath(path: string): void {
 
         if (this.config.location !== "/") {
@@ -150,6 +167,9 @@ export default class Server {
         this.currentRequestPath = this.removeOuterSlashes(this.currentRequestPath);
     }
 
+    /**
+     * Formats the headers of `res`
+     */
     private formatResponse(res: Response) {
         res.set("Server", "Silk");
 
@@ -164,6 +184,9 @@ export default class Server {
         res.set(this.config.headers);
     }
 
+    /**
+     * Check a request's URL extension is not forbidden
+     */
     private checkUrlExtension(res: Response) {
         const requestFileType = this.getFileExtension(this.currentRequestPath);
         if (requestFileType !== null) {
@@ -181,6 +204,9 @@ export default class Server {
         }
     }
 
+    /**
+     * Gets the file extension of `string` if it has one
+     */
     private getFileExtension(str: string): string | null {
         if (str === "/") return "html";
 
@@ -194,11 +220,17 @@ export default class Server {
         return str.slice(lastDotIndex + 1);
     }
 
+    /**
+     * Removes the file extension of a string
+     */
     private removeFileExtension(str: string): string {
         const lastDotIndex = str.lastIndexOf(".");
         return str.substring(0, lastDotIndex);
     }
 
+    /**
+     * Check if the request path has a HTMl file extension, if so redirect to the path without the HTMl file extension
+     */
     private checkForHtmlExtension(res: Response): boolean {
         const urlFileExtension = this.getFileExtension(this.currentRequestPath);
         if (urlFileExtension !== "html" || urlFileExtension === null) return false;
@@ -220,6 +252,9 @@ export default class Server {
         return false;
     }
 
+    /**
+     * Send a file in the HTTP response 
+     */
     private sendFile(res: Response, path: string): void {
         res.sendFile(path, null, (err) => {
             if (err) {
@@ -228,6 +263,9 @@ export default class Server {
         });
     }
 
+    /**
+     * Send a 404 response 
+     */
     private respondNotFound(res: Response) {
         if (this.config.notFoundPath) {
             res.redirect(`/${this.config.notFoundPath}`);
@@ -237,6 +275,9 @@ export default class Server {
         res.status(404).send("<h1>404 Not Found</h1>");
     }
 
+    /**
+     * Send a 505 response
+     */
     private respondInternalServerError(res: Response) {
         if (this.config.internalErrorPath) {
             res.redirect(`${this.config.root}/${this.config.internalErrorPath}`);
@@ -246,6 +287,9 @@ export default class Server {
         res.status(500).send("<h1>500 Internal Server Error</h1>");
     }
 
+    /**
+     * Send a 403 response
+     */
     private respondForbidden(res: Response) 
     {
         if (this.config.forbiddenPath) {
@@ -256,6 +300,9 @@ export default class Server {
         res.status(403).send("<h1>403 Forbidden</h1>");
     }
 
+    /**
+     * Start the Express server
+     */
     private start(): void {
         this.server.disable("x-powered-by");
 
@@ -266,10 +313,12 @@ export default class Server {
         }
     }
 
+    /**
+     * Print an error with the current server number and exit the program 
+     */
     private error(message: string) {
         console.error("\x1b[31m", "[ERROR]:", "\x1b[0m", message, `(server #${this.serverNumber})`);
         console.log("Program has exited.");
         exit(1);
     }
-
 }
