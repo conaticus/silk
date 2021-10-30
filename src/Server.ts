@@ -2,7 +2,8 @@ import express, { Express, Response } from "express";
 import proxy from "express-http-proxy";
 import { existsSync } from "fs";
 import { ConfigServer } from "./types";
-import error from "./error";
+import { isBool, isNumber, isString } from "./util";
+import { exit } from "process";
 
 export default class Server {
     private config: ConfigServer;
@@ -23,6 +24,61 @@ export default class Server {
 
         this.setupRoutes();
         this.start();
+    }
+
+    private checkConfig(): void {
+        if (this.config.proxy && this.config.root) {
+            this.error("There cannot be both a 'proxy' and a 'root' in the same server.");
+        }
+
+        if (this.config.proxy && this.config.headers !== undefined) {
+            this.error("The 'headers' configuration cannot be used in the same server as a 'proxy'.)");
+        }
+
+        if (!this.config.proxy && !this.config.root) {
+            this.error("A 'root' or 'proxy' is required in order to start a server.");
+        }
+
+        if (this.config.proxy && !isString(this.config.proxy)) {
+            this.error("'proxy' must be of type string.");
+        }
+
+        if (this.config.root && !isString(this.config.root)) {
+            this.error("'root' must be of type string.");
+        }
+
+        if (this.config.port !== undefined && !isNumber(this.config.port)) {
+            this.error("'port' must be of type number.");
+        }
+
+        if (this.config.location && !isString(this.config.location)) {
+            this.error("'location' must be of type string.");
+        }
+
+        if (this.config.redirectHtmlExtension && !isBool(this.config.redirectHtmlExtension)) {
+            this.error("'redirectHtmlExtension must be of type boolean.'");
+        }
+
+        if (this.config.notFoundPath && !isString(this.config.notFoundPath)) {
+            this.error("'notFoundPath must be of type string.'");
+        }
+
+        if (this.config.internalErrorPath && !isString(this.config.internalErrorPath)) {
+            this.error("'internalErrorPath' must be of type string.");
+        }
+
+        if (this.config.forbiddenPath && !isString(this.config.forbiddenPath)) {
+            this.error("'forbiddenPath' must be of type string.");
+        }
+
+        if (this.config.allowedFileTypes && this.config.forbiddenFileTypes) {
+            this.error("There can only be 'allowedFileTypes' or 'forbiddenFileTypes', not both.");
+        }
+
+        this.config.location = this.removeOuterSlashes(this.config.location);
+        this.config.notFoundPath = this.removeOuterSlashes(this.config.notFoundPath);
+        this.config.internalErrorPath = this.removeOuterSlashes(this.config.internalErrorPath);
+        this.config.forbiddenPath = this.removeOuterSlashes(this.config.forbiddenPath);
     }
 
     private setupRoutes(): void {
@@ -56,12 +112,42 @@ export default class Server {
         });
     }
 
-    private sendFile(res: Response, path: string): void {
-        res.sendFile(path, null, (err) => {
-            if (err) {
-                this.respondNotFound(res);
-            }
-        });
+    private removeOuterSlashes(url: string | undefined): string {
+        if (url === "/" || !url) return "/";
+        while (url[0] === "/") {
+            url = url?.substring(1);
+        }
+
+        while (url[url.length - 1] === "/") {
+            url = url?.slice(0, -1);
+        }
+
+        return url;
+    }
+
+    private checkRequestUrl(url: string, res: Response): boolean {
+        if (this.config.location === "/") return true;
+
+        url = this.removeOuterSlashes(url);
+        url = url.substring(0, this.config.location?.length);
+
+        if (url !== this.config.location) {
+            this.respondNotFound(res);
+            return false;
+        }
+
+        return true;
+   }
+
+    private formatCurrentRequestPath(path: string): void {
+
+        if (this.config.location !== "/") {
+            this.currentRequestPath = path.slice((this.config.location as string).length + 2); // Remove two extra characters for the slashes that were previously removed 
+        } else {
+            this.currentRequestPath = path;
+        }
+
+        this.currentRequestPath = this.removeOuterSlashes(this.currentRequestPath);
     }
 
     private formatResponse(res: Response) {
@@ -76,6 +162,41 @@ export default class Server {
         }
 
         res.set(this.config.headers);
+    }
+
+    private checkUrlExtension(res: Response) {
+        const requestFileType = this.getFileExtension(this.currentRequestPath);
+        if (requestFileType !== null) {
+            if (typeof this.config.forbiddenFileTypes === "object") {
+                if (this.config.forbiddenFileTypes.includes(requestFileType)) {
+                    this.respondForbidden(res);
+                    return;
+                }
+            } else if (typeof this.config.allowedFileTypes === "object") {
+                if (!this.config.allowedFileTypes.includes(requestFileType)) {
+                    this.respondForbidden(res);
+                    return;
+                }
+            }
+        }
+    }
+
+    private getFileExtension(str: string): string | null {
+        if (str === "/") return "html";
+
+        const lastDotIndex = str.lastIndexOf(".");
+        if (lastDotIndex === -1) {
+            if (existsSync(`${this.config.root}/${str}.html`)) {
+                return "html"
+            } else return null;
+        }
+
+        return str.slice(lastDotIndex + 1);
+    }
+
+    private removeFileExtension(str: string): string {
+        const lastDotIndex = str.lastIndexOf(".");
+        return str.substring(0, lastDotIndex);
     }
 
     private checkForHtmlExtension(res: Response): boolean {
@@ -99,89 +220,12 @@ export default class Server {
         return false;
     }
 
-    private removeFileExtension(str: string): string {
-        const lastDotIndex = str.lastIndexOf(".");
-        return str.substring(0, lastDotIndex);
-    }
-
-    private getFileExtension(str: string): string | null {
-        if (str === "/") return "html";
-
-        const lastDotIndex = str.lastIndexOf(".");
-        if (lastDotIndex === -1) {
-            if (existsSync(`${this.config.root}/${str}.html`)) {
-                return "html"
-            } else return null;
-        }
-
-        return str.slice(lastDotIndex + 1);
-    }
-
-    private start(): void {
-        this.server.disable("x-powered-by");
-
-        if (this.config.port) {
-            this.server.listen(this.config.port);
-        } else {
-            this.server.listen(80);
-        }
-    }
-
-    private checkConfig(): void {
-        if (this.config.proxy && this.config.root) {
-            error(`There cannot be both a 'proxy' and a 'root' in the same server. (server #${this.serverNumber})`);
-        }
-
-        if (this.config.proxy && this.config.headers !== undefined) {
-            error(`The 'headers' configuration cannot be used in the same server as a 'proxy'. (server #${this.serverNumber})`);
-        }
-
-        if (!this.config.proxy && !this.config.root) {
-            error(`A 'root' or 'proxy' is required in order to start a server. (server #${this.serverNumber})`);
-        }
-
-        this.config.location = this.removeOuterSlashes(this.config.location);
-        this.config.notFoundPath = this.removeOuterSlashes(this.config.notFoundPath);
-        this.config.internalErrorPath = this.removeOuterSlashes(this.config.internalErrorPath);
-        this.config.forbiddenPath = this.removeOuterSlashes(this.config.forbiddenPath);
-    }
-
-    private checkRequestUrl(url: string, res: Response): boolean {
-        if (this.config.location === "/") return true;
-
-        url = this.removeOuterSlashes(url);
-        url = url.substring(0, this.config.location?.length);
-
-        if (url !== this.config.location) {
-            this.respondNotFound(res);
-            return false;
-        }
-
-        return true;
-   }
-
-    private removeOuterSlashes(url: string | undefined): string {
-        if (url === "/" || !url) return "/";
-        while (url[0] === "/") {
-            url = url?.substring(1);
-        }
-
-        while (url[url.length - 1] === "/") {
-            url = url?.slice(0, -1);
-        }
-
-        return url;
-    }
-
-    private formatCurrentRequestPath(path: string): void {
-
-        if (this.config.location !== "/") {
-            this.currentRequestPath = path.slice((this.config.location as string).length + 2); // Remove two extra characters for the slashes that were previously removed 
-        } else {
-            this.currentRequestPath = path;
-        }
-
-        this.currentRequestPath = this.removeOuterSlashes(this.currentRequestPath);
+    private sendFile(res: Response, path: string): void {
+        res.sendFile(path, null, (err) => {
+            if (err) {
+                this.respondNotFound(res);
+            }
+        });
     }
 
     private respondNotFound(res: Response) {
@@ -212,20 +256,20 @@ export default class Server {
         res.status(403).send("<h1>403 Forbidden</h1>");
     }
 
-    private checkUrlExtension(res: Response) {
-        const requestFileType = this.getFileExtension(this.currentRequestPath);
-        if (requestFileType !== null) {
-            if (typeof this.config.forbiddenFileTypes === "object") {
-                if (this.config.forbiddenFileTypes.includes(requestFileType)) {
-                    this.respondForbidden(res);
-                    return;
-                }
-            } else if (typeof this.config.allowedFileTypes === "object") {
-                if (!this.config.allowedFileTypes.includes(requestFileType)) {
-                    this.respondForbidden(res);
-                    return;
-                }
-            }
+    private start(): void {
+        this.server.disable("x-powered-by");
+
+        if (this.config.port) {
+            this.server.listen(this.config.port);
+        } else {
+            this.server.listen(80);
         }
     }
+
+    private error(message: string) {
+        console.error("\x1b[31m", "[ERROR]:", "\x1b[0m", message, `(server #${this.serverNumber})`);
+        console.log("Program has exited.");
+        exit(1);
+    }
+
 }
