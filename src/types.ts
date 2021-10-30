@@ -9,6 +9,9 @@ export interface ConfigServer {
     headers?: {
         [key: string]: any;
     };
+    notFoundPath?: string;
+    internalErrorPath?: string;
+    forbiddenPath?: string;
 }
 
 export type Config = ConfigServer[];

@@ -59,7 +59,7 @@ export default class Server {
     private sendFile(res: Response, path: string): void {
         res.sendFile(path, null, (err) => {
             if (err) {
-                this.respondForbidden(res);
+                this.respondNotFound(res);
             }
         });
     }
@@ -141,6 +141,9 @@ export default class Server {
         }
 
         this.config.location = this.removeOuterSlashes(this.config.location);
+        this.config.notFoundPath = this.removeOuterSlashes(this.config.notFoundPath);
+        this.config.internalErrorPath = this.removeOuterSlashes(this.config.internalErrorPath);
+        this.config.forbiddenPath = this.removeOuterSlashes(this.config.forbiddenPath);
     }
 
     private checkRequestUrl(url: string, res: Response): boolean {
@@ -182,15 +185,30 @@ export default class Server {
     }
 
     private respondNotFound(res: Response) {
+        if (this.config.notFoundPath) {
+            res.redirect(`/${this.config.notFoundPath}`);
+            return;
+        }
+
         res.status(404).send("<h1>404 Not Found</h1>");
     }
 
     private respondInternalServerError(res: Response) {
+        if (this.config.internalErrorPath) {
+            res.redirect(`${this.config.root}/${this.config.internalErrorPath}`);
+            return;
+        }
+
         res.status(500).send("<h1>500 Internal Server Error</h1>");
     }
 
     private respondForbidden(res: Response) 
     {
+        if (this.config.forbiddenPath) {
+            res.redirect(`${this.config.root}/${this.config.forbiddenPath}`);
+            return;
+        }
+
         res.status(403).send("<h1>403 Forbidden</h1>");
     }
 

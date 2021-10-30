@@ -17,7 +17,12 @@ To configure silk you need to alter the `config.json` file.
         "redirectHtmlExtension": false, // Whether or not silk will redirect the user if there is a html file extension included in the url (E.G: /page.html -> /page)
         "headers": { // Set the headers for the server response, any header that is null will delete the response header
             "Server": null // Delete the server response header
-        }
+        },
+        // Redirect paths when an error occurs
+        "notFoundPath": "/not-found",
+        "internalErrorPath": "/internal-error",
+        "forbiddenPath": "/forbidden"
+
     },
     {
         "proxy": "https://google.com", // Proxy to google.com

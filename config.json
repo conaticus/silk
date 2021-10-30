@@ -1,5 +1,6 @@
 [
     {
-        "root": "/Users/samal/Downloads/html"
+        "root": "/Users/samal/Downloads/html",
+        "notFoundPath": "/404"
     }
 ]
