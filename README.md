@@ -25,7 +25,7 @@ To configure silk you need to alter the `config.json` file.
 
     },
     {
-        "proxy": "https://google.com", // Proxy to google.com
+        "proxy": "https://google.com" // Proxy to google.com
     },
     {
         "root": "/var/www/html",
